@@ -2,6 +2,7 @@ module Codd.Representations.Disk
     ( persistRepsToDisk
     , readRepsFromDisk
     , toFiles
+    , toFiles'
     ) where
 
 import           Prelude                 hiding ( readFile
@@ -292,3 +293,85 @@ copyDir src dst = do
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM s r = s >>= flip when r
+
+-- | Flatten a 'DbRep', returning leaf values annotated with path and object
+-- type
+toFiles' :: DbRep -> [(FilePath, (ObjectRep, Value))]
+toFiles' (DbRep dbSettingsRep schemas roles)
+    = ("db-settings", (HDatabaseSettings, dbSettingsRep))
+    : goDir_ "roles" roleToFile roles
+    ++ goDir "schemas" schemaToFiles schemas
+  where
+    goDir_ :: FilePath -> (v -> (FilePath, a)) -> Map k v -> [(FilePath, a)]
+    goDir_ path f = inDir path . map f . Map.elems
+
+    goDir :: FilePath -> (v -> [(FilePath, a)]) -> Map ObjName v -> [(FilePath, a)]
+    goDir path f
+      = concatMap (\(name, x) -> inDir (path </> mkPathFrag name) $ f x)
+      . Map.toList
+
+    inDir :: FilePath -> [(FilePath, a)] -> [(FilePath, a)]
+    inDir path = map $ first (path </>)
+
+    roleToFile :: RoleRep -> (FilePath, (ObjectRep, Value))
+    roleToFile (RoleRep roleName roleRep) =
+      (mkPathFrag roleName, (HRole, roleRep))
+
+    schemaToFiles :: SchemaRep -> [(FilePath, (ObjectRep, Value))]
+    schemaToFiles (SchemaRep _schemaName namespaceRep tables views routines seqs colls types)
+      = ("objrep", (HSchema, namespaceRep))
+      : goDir "tables" tableToFiles tables
+      ++ goDir_ "views" viewToFile views
+      ++ goDir_ "routines" routineToFile routines
+      ++ goDir_ "sequences" sequenceToFile seqs
+      ++ goDir_ "collations" collationToFile colls
+      ++ goDir_ "types" typeToFile types
+
+    tableToFiles :: TableRep -> [(FilePath, (ObjectRep, Value))]
+    tableToFiles (TableRep _tblName tblRep columns constraints triggers policies indexes)
+      = ("objrep", (HTable, tblRep))
+      : goDir_ "cols" tableColumnToFile columns
+      ++ goDir_ "constraints" tableConstraintToFile constraints
+      ++ goDir_ "triggers" tableTriggerToFile triggers
+      ++ goDir_ "policies" tablePolicyToFile policies
+      ++ goDir_ "indexes" tableIndexToFile indexes
+
+    tableColumnToFile :: TableColumnRep -> (FilePath, (ObjectRep, Value))
+    tableColumnToFile (TableColumnRep colName colRep) =
+      (mkPathFrag colName, (HColumn, colRep))
+
+    tableConstraintToFile :: TableConstraintRep -> (FilePath, (ObjectRep, Value))
+    tableConstraintToFile (TableConstraintRep constrName constrRep) =
+      (mkPathFrag constrName, (HTableConstraint, constrRep))
+
+    tableTriggerToFile :: TableTriggerRep -> (FilePath, (ObjectRep, Value))
+    tableTriggerToFile (TableTriggerRep triggerName triggerRep) =
+      (mkPathFrag triggerName, (HTrigger, triggerRep))
+
+    tablePolicyToFile :: TablePolicyRep -> (FilePath, (ObjectRep, Value))
+    tablePolicyToFile (TablePolicyRep polName polRep) =
+      (mkPathFrag polName, (HPolicy, polRep))
+
+    tableIndexToFile :: TableIndexRep -> (FilePath, (ObjectRep, Value))
+    tableIndexToFile (TableIndexRep idxName indexRep) =
+      (mkPathFrag idxName, (HIndex, indexRep))
+
+    viewToFile :: ViewRep -> (FilePath, (ObjectRep, Value))
+    viewToFile (ViewRep viewName viewRep) =
+      (mkPathFrag viewName, (HView, viewRep))
+
+    routineToFile :: RoutineRep -> (FilePath, (ObjectRep, Value))
+    routineToFile (RoutineRep routineName routineRep) =
+      (mkPathFrag routineName, (HRoutine, routineRep))
+
+    sequenceToFile :: SequenceRep -> (FilePath, (ObjectRep, Value))
+    sequenceToFile (SequenceRep seqName seqRep) =
+      (mkPathFrag seqName, (HSequence, seqRep))
+
+    collationToFile :: CollationRep -> (FilePath, (ObjectRep, Value))
+    collationToFile (CollationRep collName collationRep) =
+      (mkPathFrag collName, (HCollation, collationRep))
+
+    typeToFile :: TypeRep -> (FilePath, (ObjectRep, Value))
+    typeToFile (TypeRep typeName typeRep) =
+      (mkPathFrag typeName, (HType, typeRep))

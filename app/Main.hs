@@ -24,7 +24,11 @@ import           Options.Applicative
 import qualified System.IO                     as IO
 import qualified Text.Read                     as Text
 
-data Cmd = Up (Maybe Codd.VerifySchemas) DiffTime | Add AddMigrationOptions (Maybe FilePath) Verbosity SqlFilePath | WriteSchema WriteSchemaOpts | VerifySchema Verbosity Bool
+data Cmd
+  = Up (Maybe Codd.VerifySchemas) DiffTime
+  | Add AddMigrationOptions (Maybe FilePath) Verbosity SqlFilePath
+  | WriteSchema WriteSchemaOpts
+  | VerifySchema Verbosity Bool Bool Bool
 
 cmdParser :: Parser Cmd
 cmdParser = hsubparser
@@ -137,11 +141,25 @@ writeSchemaParser =
         )
 
 verifySchemaParser :: Parser Cmd
-verifySchemaParser = VerifySchema <$> quietSwitch <*> switch
-  (  long "from-stdin"
-  <> help
-       "Reads a JSON representation of the expected schema from stdin (also see 'codd write-schema'), instead of using the on-disk expected schema files."
-  )
+verifySchemaParser =
+  VerifySchema
+    <$> quietSwitch
+    <*> (switch
+          (  long "from-stdin"
+          <> help
+               "Reads a JSON representation of the expected schema from stdin (also see 'codd write-schema'), instead of using the on-disk expected schema files."
+          )
+        )
+    <*> (switch
+          (  long "ignore-col-ord"
+          <> help "Ignore column order"
+          )
+        )
+    <*> (switch
+          (  long "ignore-fun-def"
+          <> help "Ignore function definitions"
+          )
+        )
 
 sqlFilePathReader :: ReadM SqlFilePath
 sqlFilePathReader = fmap SqlFilePath $ eitherReader $ \s ->
@@ -201,6 +219,6 @@ doWork dbInfo (Up mCheckSchemas connectTimeout) =
       void $ Codd.applyMigrations dbInfo Nothing connectTimeout checkSchemas
 doWork dbInfo (Add addOpts destFolder verbosity fp) =
   runVerbosityLogger verbosity $ addMigration dbInfo addOpts destFolder fp
-doWork dbInfo (VerifySchema verbosity fromStdin) =
-  runVerbosityLogger verbosity $ verifySchema dbInfo fromStdin
+doWork dbInfo (VerifySchema verbosity fromStdin ignoreColOrder ignoreFunDef) =
+  runVerbosityLogger verbosity $ verifySchema dbInfo fromStdin ignoreColOrder ignoreFunDef
 doWork dbInfo (WriteSchema opts) = writeSchema dbInfo opts
