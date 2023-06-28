@@ -73,7 +73,7 @@ import qualified Streaming.Prelude as Streaming
 import qualified System.IO as IO
 import UnliftIO.Resource (runResourceT, ResourceT, allocate, ReleaseKey, release, MonadResource)
 import UnliftIO.MVar (newMVar, readMVar, modifyMVar)
-import UnliftIO.IO (openFile, IOMode (ReadMode))
+import UnliftIO.IO (IOMode (ReadMode))
 import Control.Monad.Trans.Resource (MonadThrow)
 
 dbIdentifier :: Text -> DB.Query
@@ -324,7 +324,7 @@ collectPendingMigrations defaultConnString sqlMigrations txnIsolationLvl connect
 -- So we copied streaming's implementation and modified it slightly.
 streamingReadFile :: MonadResource m => FilePath -> m (FileStream m)
 streamingReadFile filePath = do
-    (releaseKey, handle) <- allocate (openFile filePath ReadMode) hClose
+    (releaseKey, handle) <- allocate (liftIO $ IO.openFile filePath ReadMode) hClose
     pure $ FileStream {
         filePath
         , releaseKey
